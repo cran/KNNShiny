@@ -1,0 +1,488 @@
+---
+title: "K-nearest neighbour Classification Modelling"
+output: html_document
+runtime: shiny
+---
+
+Note :  1. This application works only for 2 or more predictors(independent variables)
+        2. The general rule of thumb of square root of number of rows in validation data is folllowed in figuring out the ideal value of k
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(caret)
+library(e1071)
+library(rhandsontable)
+library(datasets)
+library(psycho)
+#library(lattice)
+library(FNN)
+
+```
+
+```{r,echo=FALSE}
+sidebarPanel(
+  checkboxInput("ex","Uncheck for using your own file",value = TRUE),
+  fileInput("file", "Upload the *.csv file with headers"),
+  selectInput("dt","Choose Train/Valid/Full for Visuals",choices = c("Train","Valid","Full"),selected = "Full"),
+  sliderInput("train_num", label = "Enter the proportion of training dataset:",
+                     min = 0.6, max = 1, value = 0.6, step = 0.01),
+  checkboxInput("std","Standardize",value = FALSE),
+  
+  uiOutput("vx"),
+  uiOutput("vy"),
+  downloadButton("downloadPlot", "Download Plot") 
+  
+)
+mainPanel(
+   tabsetPanel(type = "tab",
+                tabPanel("Model Summary", verbatimTextOutput("AD") ),
+                tabPanel("Model Visualization", plotOutput("MV") ),
+                tabPanel("Model Evaluation",verbatimTextOutput("ME")),
+                tabPanel("Model Deployment",verbatimTextOutput("MD"))
+                ),
+    h6("Edit the test data record"),
+   rHandsontableOutput("testdata"),
+   h6("", tags$img(src ="K.JPG", height= 400, width=400))
+)
+output$AD<-renderPrint({
+   if(input$ex == TRUE)
+     {data("iris")
+      data = iris
+    gp = runif(nrow(data))
+    data[,]= data[order(gp),]
+      }
+     else{
+  file1 = input$file
+     if(is.null(file1)){return()}
+     
+     data =  read.table(file =  file1$datapath,sep =",",header = TRUE)
+     if(is.null(data())){return()}
+     }
+     ds = data
+     
+     ds = select(ds,input$variablex)
+     if(ncol(ds)==2){return()}
+     if(input$std == TRUE)
+       {ds = standardize(ds)}
+     options(scipen = 999)
+       prop = input$train_num
+       set.seed(1)
+       dataframe =  ds
+       train.rows = sample(row.names(dataframe),dim(dataframe)[1]*prop)
+       dataframet = dataframe[train.rows,]
+       valid.rows = setdiff(row.names(dataframe),train.rows)
+       dataframev = dataframe[valid.rows,]    
+ 
+      
+       indexdependent= grep(input$variabley, colnames(dataframe))
+      # print(indexdependent)
+     if(prop<1)
+     {  accuracy.df = data.frame(k =seq(1,sqrt(nrow(dataframev)),accuracy = rep(0,sqrt(nrow(dataframev)))))
+       
+       
+      for(i in 1:sqrt(nrow(dataframev)) )
+{
+  prediction= knn(train =dataframet[,-indexdependent],test = dataframev[,-indexdependent],cl =  dataframet[,indexdependent],k= i)
+       accuracy.df[i,2]=confusionMatrix(prediction,dataframev[,indexdependent])$overall[1]
+      }   
+       names(accuracy.df)=c("k", "Accuracy")
+       accuracy.df[,] = accuracy.df[order(1-accuracy.df$Accuracy),]
+     print(accuracy.df)  
+     cat(sprintf("The value for k to be chosen is %d ",accuracy.df[1,1]))
+   # print("The ideal value for the ")
+     
+     }
+     
+       else 
+       {
+         print("There needs to be a validation/test data set")
+       }
+      
+
+     
+     
+})
+output$MV<-renderPlot({ 
+  if(input$ex == TRUE)
+     {data("iris")
+      data = iris
+    gp = runif(nrow(data))
+    data[,]= data[order(gp),]
+      }
+     else{
+  file1 = input$file
+     if(is.null(file1)){return()}
+     
+     data =  read.table(file =  file1$datapath,sep =",",header = TRUE)
+     if(is.null(data())){return()}
+     }
+     ds = data
+     
+     ds = select(ds,input$variablex)
+     if(ncol(ds)==2){return()}
+     if(input$std == TRUE)
+       {ds = standardize(ds)}
+     dataframe = ds
+  
+     indexdependent= grep(input$variabley, colnames(dataframe))
+     prop = input$train_num
+       set.seed(1)
+       dataframe =  ds
+       train.rows = sample(row.names(dataframe),dim(dataframe)[1]*prop)
+       dataframet = dataframe[train.rows,]
+       valid.rows = setdiff(row.names(dataframe),train.rows)
+       dataframev = dataframe[valid.rows,]    
+ 
+   #  super.sym <- trellis.par.get("superpose.symbol")
+   #  ngp =  nlevels(dataframe[,indexdependent])
+ # splom(~dataframe[,-indexdependent]|dataframe[,indexdependent], data=dataframe) 
+  # parallelplot(~dataframe[,-indexdependent] | dataframe[,indexdependent], dataframe)           
+       if(input$dt == "Full")   
+   {
+         if(ncol(dataframe)>2)
+       {pairs(dataframe[,-indexdependent], col = dataframe[,indexdependent], oma=c(3,3,3,15))
+par(xpd = TRUE)
+legend("bottomright", fill = unique( dataframe[,indexdependent]), legend = c( levels( dataframe[,indexdependent])))
+         }
+         
+  }
+       if(input$dt == "Train")   
+   { 
+        if(ncol(dataframet)>2)
+       {  pairs(dataframet[,-indexdependent], col = dataframet[,indexdependent], oma=c(3,3,3,15))
+par(xpd = TRUE)
+legend("bottomright", fill = unique( dataframet[,indexdependent]), legend = c( levels( dataframet[,indexdependent])))
+        }
+         
+  }
+       
+         if(input$dt == "Valid")   
+   { 
+           if(ncol(dataframev)>2 && prop<1)
+         { pairs(dataframev[,-indexdependent], col = dataframev[,indexdependent], oma=c(3,3,3,15))
+par(xpd = TRUE)
+legend("bottomright", fill = unique( dataframev[,indexdependent]), legend = c( levels( dataframev[,indexdependent]))) 
+           }
+   }
+       
+       
+     
+})
+
+output$ME<-renderPrint({
+   if(input$ex == TRUE)
+     {data("iris")
+      data = iris
+    gp = runif(nrow(data))
+    data[,]= data[order(gp),]
+      }
+     else{
+  file1 = input$file
+     if(is.null(file1)){return()}
+     
+     data =  read.table(file =  file1$datapath,sep =",",header = TRUE)
+     if(is.null(data())){return()}
+     }
+     ds = data
+     
+     ds = select(ds,input$variablex)
+     if(ncol(ds)==2){return()}
+     if(input$std == TRUE)
+       {ds = standardize(ds)}
+     mod = paste(input$variabley,"~.")
+     options(scipen = 999)
+       prop = input$train_num
+       set.seed(1)
+       dataframe =  ds
+       train.rows = sample(row.names(dataframe),dim(dataframe)[1]*prop)
+       dataframet = dataframe[train.rows,]
+       valid.rows = setdiff(row.names(dataframe),train.rows)
+       dataframev = dataframe[valid.rows,]    
+ 
+      
+       indexdependent= grep(input$variabley, colnames(dataframe))
+     #  print(indexdependent)
+     if(prop<1)
+     {  accuracy.df = data.frame(k =seq(1,sqrt(nrow(dataframev)),accuracy = rep(0,sqrt(nrow(dataframev)))))
+       
+       
+      for(i in 1:sqrt(nrow(dataframev)) )
+{
+  prediction= knn(train =dataframet[,-indexdependent],test = dataframev[,-indexdependent],cl =  dataframet[,indexdependent],k= i)
+       accuracy.df[i,2]=confusionMatrix(prediction,dataframev[,indexdependent])$overall[1]
+      }   
+       names(accuracy.df)=c("k", "Accuracy")
+       accuracy.df[,] = accuracy.df[order(1-accuracy.df$Accuracy),]
+   #  print(accuracy.df)  
+     #cat(sprintf("The value for k to be chosen is %d ",accuracy.df[1,1]))
+   # print("The ideal value for the ")
+       ki = accuracy.df[1,1]
+  prediction= knn(train =dataframet[,-indexdependent],test = dataframev[,-indexdependent],cl =  dataframet[,indexdependent],k= ki)
+  print(confusionMatrix(prediction,dataframev[,indexdependent]))
+     
+     }
+     
+       else 
+       {
+         print("There needs to be a validation/test data set")
+       }
+      
+
+   
+
+     
+     
+})
+
+output$MD<-renderPrint({
+  if(input$ex == TRUE)
+     {data("iris")
+      data = iris
+    gp = runif(nrow(data))
+    data[,]= data[order(gp),]
+      }
+     else
+     {
+  file1 = input$file
+     if(is.null(file1)){return()}
+     
+     data =  read.table(file =  file1$datapath,sep =",",header = TRUE)
+     if(is.null(data())){return()}
+     }
+     ds = data
+     
+     ds = select(ds,input$variablex)
+     if(ncol(ds)==2){return()}
+     if(input$std == TRUE)
+       {ds = standardize(ds)}
+    
+     options(scipen = 999)
+       prop = input$train_num
+       set.seed(1)
+       dataframe =  ds
+       train.rows = sample(row.names(dataframe),dim(dataframe)[1]*prop)
+       dataframet = dataframe[train.rows,]
+       valid.rows = setdiff(row.names(dataframe),train.rows)
+       dataframev = dataframe[valid.rows,]  
+       
+       indexdependent= grep(input$variabley, colnames(dataframe))
+       if(prop<1)
+     {  accuracy.df = data.frame(k =seq(1,sqrt(nrow(dataframev)),accuracy = rep(0,sqrt(nrow(dataframev)))))
+       
+       
+      for(i in 1:sqrt(nrow(dataframev)) )
+{
+  prediction= knn(train =dataframet[,-indexdependent],test = dataframev[,-indexdependent],cl =  dataframet[,indexdependent],k= i)
+       accuracy.df[i,2]=confusionMatrix(prediction,dataframev[,indexdependent])$overall[1]
+      }   
+       names(accuracy.df)=c("k", "Accuracy")
+       accuracy.df[,] = accuracy.df[order(1-accuracy.df$Accuracy),]
+    # print(accuracy.df)  
+   # cat(sprintf("The value for k to be chosen is %d ",accuracy.df[1,1]))
+   # print("The ideal value for the ")
+       ki = accuracy.df[1,1]
+     
+     }
+     
+       else 
+       {
+         print("There needs to be a validation/test data set")
+       }
+      
+# if(input$mt == "lda")
+    # {
+      # model = MASS::lda(formula = as.formula(mod),data = dataframet)
+       test_data = data.frame(hot_to_r(input$testdata))
+       if(ncol(test_data)== 1)
+       { df  = select(dataframet,-c(input$variabley))
+         colnames(test_data)=  colnames(df)
+       }
+       #print(dim(dataframet))
+      # print(dim(test_data))
+       if(ncol(test_data)>1 && prop <1)
+     {  prediction= knn(train =dataframet[,-indexdependent],test= test_data,cl =  dataframet[,indexdependent],k= ki)  
+     test_data$predictedvalue = prediction
+       print(test_data)
+       
+     } 
+   
+
+     
+     
+})
+
+output$vx <- renderUI({
+   
+ if(input$ex == TRUE)
+     {data("iris")
+      data = iris}
+     else
+     {
+     
+     file1 = input$file
+     if(is.null(file1)){return()}
+     
+     data =  read.table(file =  file1$datapath,sep =",",header = TRUE)
+     if(is.null(data())){return()}
+    
+     }
+     
+    checkboxGroupInput("variablex","Select the variables",choices = colnames(data),selected = colnames(data))
+    
+    
+  
+
+
+  })
+output$vy <- renderUI({
+   
+ if(input$ex == TRUE)
+     {data("iris")
+      data = iris}
+     else
+     {
+     
+     file1 = input$file
+     if(is.null(file1)){return()}
+     
+     data =  read.table(file =  file1$datapath,sep =",",header = TRUE)
+     if(is.null(data())){return()}
+     }
+    ds = data
+    ds = select(ds,input$variablex) 
+    ds = select_if(ds,is.factor)
+     
+    selectInput("variabley","Select the dependent variable",choices = colnames(ds),selected = "" )
+
+
+  })
+output$k <- renderUI({
+   
+ if(input$ex == TRUE)
+     {data("iris")
+      data = iris}
+     else
+     {
+     
+     file1 = input$file
+     if(is.null(file1)){return()}
+     
+     data =  read.table(file =  file1$datapath,sep =",",header = TRUE)
+     if(is.null(data())){return()}
+     }
+    ds = data
+    prop = input$train_num
+       set.seed(1)
+       dataframe =  ds
+       train.rows = sample(row.names(dataframe),dim(dataframe)[1]*prop)
+       dataframet = dataframe[train.rows,]
+       valid.rows = setdiff(row.names(dataframe),train.rows)
+       dataframev = dataframe[valid.rows,] 
+   
+    sliderInput("k", label = "Enter the value of k ",
+                     min = 1, max = NROW(dataframet), value = 1, step = 1)
+
+
+  })
+
+output$testdata <- renderRHandsontable({
+   
+ if(input$ex == TRUE)
+     {data("iris")
+      data = iris}
+     else{
+     
+     file1 = input$file
+     if(is.null(file1)){return()}
+     
+     data =  read.table(file =  file1$datapath,sep =",",header = TRUE)
+     if(is.null(data())){return()}
+     }
+    
+    ds = data
+    ds = select(ds,input$variablex) 
+    if(input$std == TRUE)
+       {ds = standardize(ds)}
+     ds = select(ds,-c(input$variabley))
+    
+ 
+   rhandsontable(data.frame(ds[1,]))
+    
+   
+
+  })
+
+
+output$downloadPlot<- downloadHandler(
+    filename = function() {
+      paste("Scatterplot", ".png", sep = "")
+    },
+    content = function(file) {
+      png(file)
+if(input$ex == TRUE)
+     {data("iris")
+      data = iris
+    gp = runif(nrow(data))
+    data[,]= data[order(gp),]
+      }
+     else{
+  file1 = input$file
+     if(is.null(file1)){return()}
+     
+     data =  read.table(file =  file1$datapath,sep =",",header = TRUE)
+     if(is.null(data())){return()}
+     }
+     ds = data
+     
+     ds = select(ds,input$variablex)
+     if(ncol(ds)==2){return()}
+     if(input$std == TRUE)
+       {ds = standardize(ds)}
+     dataframe = ds
+  
+     indexdependent= grep(input$variabley, colnames(dataframe))
+     prop = input$train_num
+       set.seed(1)
+       dataframe =  ds
+       train.rows = sample(row.names(dataframe),dim(dataframe)[1]*prop)
+       dataframet = dataframe[train.rows,]
+       valid.rows = setdiff(row.names(dataframe),train.rows)
+       dataframev = dataframe[valid.rows,]    
+ 
+   #  super.sym <- trellis.par.get("superpose.symbol")
+   #  ngp =  nlevels(dataframe[,indexdependent])
+ # splom(~dataframe[,-indexdependent]|dataframe[,indexdependent], data=dataframe) 
+  # parallelplot(~dataframe[,-indexdependent] | dataframe[,indexdependent], dataframe)           
+       if(input$dt == "Full")   
+   {
+         if(ncol(dataframe)>2)
+       {pairs(dataframe[,-indexdependent], col = dataframe[,indexdependent], oma=c(3,3,3,15))
+par(xpd = TRUE)
+legend("bottomright", fill = unique( dataframe[,indexdependent]), legend = c( levels( dataframe[,indexdependent])))
+         }
+         
+  }
+       if(input$dt == "Train")   
+   { 
+        if(ncol(dataframet)>2)
+       {  pairs(dataframet[,-indexdependent], col = dataframet[,indexdependent], oma=c(3,3,3,15))
+par(xpd = TRUE)
+legend("bottomright", fill = unique( dataframet[,indexdependent]), legend = c( levels( dataframet[,indexdependent])))
+        }
+         
+  }
+       
+         if(input$dt == "Valid")   
+   { 
+           if(ncol(dataframev)>2 && prop<1)
+         { pairs(dataframev[,-indexdependent], col = dataframev[,indexdependent], oma=c(3,3,3,15))
+par(xpd = TRUE)
+legend("bottomright", fill = unique( dataframev[,indexdependent]), legend = c( levels( dataframev[,indexdependent]))) 
+           }
+   }
+       
+       
+     
+      dev.off()
+    })
